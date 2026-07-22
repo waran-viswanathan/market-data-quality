@@ -1,0 +1,26 @@
+# Thresholds for the data-quality checks.
+# Every key maps 1:1 onto a field of market_data_quality.config.Config;
+# unknown keys are rejected so typos fail loudly instead of silently
+# falling back to defaults.
+
+[thresholds]
+# Price spikes: flag |z| > spike_sigma of log returns vs a trailing window.
+spike_sigma = 4.0
+spike_window = 21
+# Classification heuristics for flagged spikes.
+spike_volume_ratio = 3.0      # volume > ratio * trailing median => volume confirms
+spike_revert_fraction = 0.5   # next-day move >= fraction of spike, opposite sign => reverted
+
+# Stale data: price unchanged for more than this many consecutive sessions.
+stale_max_days = 5
+# Runs whose median volume is below this fraction of the ticker's overall
+# median volume are reported as INFO (thin names legitimately go flat).
+stale_low_volume_fraction = 0.25
+
+# Adjustment consistency: relative change in adj_close/close treated as a
+# genuine ratio move (vs float noise) when it exceeds this tolerance.
+adjustment_ratio_tol = 0.001
+
+# Cross-source reconciliation.
+reconcile_close_bps = 20.0      # closes disagreeing beyond this are reported
+reconcile_volume_rel_tol = 0.5  # |vol_a - vol_b| / max(vol) beyond this is reported
