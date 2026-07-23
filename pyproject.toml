@@ -5,6 +5,7 @@ description = "Data-quality pipeline for daily OHLCV market data: two-source ing
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "numpy>=2.4.6",
     "pandas>=3.0.3",
     "pyarrow>=25.0.0",
     "requests>=2.34.2",
