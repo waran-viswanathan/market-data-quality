@@ -106,14 +106,16 @@ def check_price_spikes(
             [
                 confirmed,
                 denied,
-                volume_spiked & ~reverted,
+                volume_spiked & next_ret.notna() & ~reverted,
                 reverted & ~volume_spiked,
+                volume_spiked & next_ret.isna(),
             ],
             [
                 "likely real event; second source shows the same move",
                 "likely bad tick; second source does not show the move",
                 "likely real event; volume spiked and the move persisted next day",
                 "likely bad tick; normal volume and the move fully reverted next day",
+                "ambiguous; volume spiked but next-session persistence is unavailable",
             ],
             default="ambiguous; volume and persistence heuristics disagree — review manually",
         ),
@@ -137,3 +139,4 @@ def check_price_spikes(
             )
         )
     return findings
+

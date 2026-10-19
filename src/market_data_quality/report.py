@@ -18,7 +18,7 @@ import pandas as pd
 
 from market_data_quality.checks import CHECK_ORDER
 from market_data_quality.config import Config
-from market_data_quality.findings import Finding, Severity
+from market_data_quality.findings import CheckExecution, Finding, Severity
 
 _SEVERITY_ORDER = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}
 
@@ -32,16 +32,21 @@ class RunMeta:
     end: str | None
     offline: bool
     config: Config
+    executions: dict[tuple[str, str], CheckExecution] = field(default_factory=dict)
+    sources: tuple[dict[str, object], ...] = ()
     generated_at: dt.datetime = field(default_factory=dt.datetime.now)
 
 
-def summarize(findings: list[Finding], tickers: list[str]) -> pd.DataFrame:
+def summarize(
+    findings: list[Finding], tickers: list[str],
+    executions: dict[tuple[str, str], CheckExecution] | None = None,
+) -> pd.DataFrame:
     """Build the per-(ticker, check) summary table.
 
     Args:
         findings: All findings from a run.
-        tickers: Tickers processed, so clean (ticker, check) cells still get
-            a PASS row instead of vanishing.
+        tickers: Tickers processed, including checks that could not run.
+        executions: Explicit execution evidence. Unknown checks are SKIPPED.
 
     Returns:
         Frame with columns ``ticker, check, errors, warnings, info, status``
@@ -67,6 +72,11 @@ def summarize(findings: list[Finding], tickers: list[str]) -> pd.DataFrame:
     counts["status"] = np.select(
         [counts["error"] > 0, counts["warning"] > 0], ["FAIL", "WARN"], default="PASS"
     )
+    executions = executions or {}
+    for key in grid:
+        execution = executions.get(key, CheckExecution("SKIPPED", "execution not recorded"))
+        if execution.status != "COMPLETED" and counts.loc[key, "status"] == "PASS":
+            counts.loc[key, "status"] = execution.status
     return (
         counts.rename(columns={"error": "errors", "warning": "warnings"})
         .reset_index()
@@ -110,12 +120,17 @@ def _meta_lines(meta: RunMeta) -> list[str]:
 
 def render_markdown(findings: list[Finding], meta: RunMeta) -> str:
     """Render the full Markdown report."""
-    summary = summarize(findings, list(meta.tickers))
+    summary = summarize(findings, list(meta.tickers), meta.executions)
     lines = ["# Market data quality report", ""]
     lines += [f"- {line}" for line in _meta_lines(meta)]
-    lines += ["", "## Summary", "", _markdown_table(summary), "", "## Findings", ""]
+    lines += ["", "## Summary", "", _markdown_table(summary)]
+    lines += ["", "PASS means the check completed without warnings or errors; SKIPPED and UNAVAILABLE are not passes."]
+    notes = _execution_notes(meta)
+    if notes:
+        lines += ["", "## Coverage and execution", "", *[f"- {note}" for note in notes]]
+    lines += ["", "## Findings", ""]
     if not findings:
-        lines.append("No findings — all checks passed.")
+        lines.append("No findings were emitted. Refer to execution status for checks that could not run.")
     current_ticker = None
     for finding in _sorted_findings(findings):
         if finding.ticker != current_ticker:
@@ -143,6 +158,7 @@ ul.meta { color: #4a5568; font-size: .9rem; padding-left: 1.2rem; }
 .badge.warning, .status-WARN { background: #fdf0d5; color: #7a5200; }
 .badge.info { background: #e2ecf9; color: #1d4f91; }
 .status-PASS { background: #e3f4e4; color: #1d6b28; }
+.status-SKIPPED, .status-UNAVAILABLE { background: #edf0f4; color: #4a5568; }
 li.finding { margin: .35rem 0; }
 code { background: #f2f4f8; padding: .05rem .3rem; border-radius: .25rem; }
 .dates { color: #4a5568; font-size: .85rem; }
@@ -165,7 +181,7 @@ def _html_summary_table(summary: pd.DataFrame) -> str:
 
 def render_html(findings: list[Finding], meta: RunMeta) -> str:
     """Render the full self-contained HTML report (inline CSS, no CDN)."""
-    summary = summarize(findings, list(meta.tickers))
+    summary = summarize(findings, list(meta.tickers), meta.executions)
     parts = [
         "<!DOCTYPE html>",
         '<html lang="en"><head><meta charset="utf-8">',
@@ -177,10 +193,14 @@ def render_html(findings: list[Finding], meta: RunMeta) -> str:
         "</ul>",
         "<h2>Summary</h2>",
         _html_summary_table(summary),
+        "<p>PASS means the check completed without warnings or errors. SKIPPED and UNAVAILABLE are not passes.</p>",
+        "<h2>Coverage and execution</h2><ul>",
+        *[f"<li>{html.escape(note)}</li>" for note in _execution_notes(meta)],
+        "</ul>",
         "<h2>Findings</h2>",
     ]
     if not findings:
-        parts.append("<p>No findings — all checks passed.</p>")
+        parts.append("<p>No findings were emitted. Refer to execution status for checks that could not run.</p>")
     current_ticker = None
     for finding in _sorted_findings(findings):
         if finding.ticker != current_ticker:
@@ -202,6 +222,14 @@ def render_html(findings: list[Finding], meta: RunMeta) -> str:
     return "\n".join(parts)
 
 
+def _execution_notes(meta: RunMeta) -> list[str]:
+    notes = [f"{ticker}/{check}: {run.status} — {run.reason}" for (ticker, check), run in sorted(meta.executions.items()) if run.reason]
+    for source in meta.sources:
+        detail = "; ".join(f"{key}={value}" for key, value in source.items() if value is not None)
+        notes.append(detail)
+    return notes
+
+
 def write_reports(
     findings: list[Finding], meta: RunMeta, reports_dir: Path
 ) -> tuple[Path, Path]:
@@ -217,3 +245,4 @@ def write_reports(
     markdown_path.write_text(render_markdown(findings, meta), encoding="utf-8")
     html_path.write_text(render_html(findings, meta), encoding="utf-8")
     return markdown_path, html_path
+

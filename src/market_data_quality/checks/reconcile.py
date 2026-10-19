@@ -87,8 +87,8 @@ def check_cross_source(
             severity = Severity.WARNING
             explanation = (
                 f"near-constant {primary_name}/{secondary_name} ratio "
-                f"{run_ratio.mean():.4f} — differing split/dividend adjustment "
-                "conventions, not bad prices"
+                f"{run_ratio.mean():.4f} — consistent with differing split/dividend "
+                "adjustment conventions; verify vendor metadata before ruling out a scale error"
             )
         else:
             severity = Severity.ERROR
@@ -128,3 +128,4 @@ def check_cross_source(
                 )
             )
     return findings
+
