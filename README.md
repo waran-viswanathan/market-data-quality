@@ -1,16 +1,28 @@
 # market-data-quality
 
-[![CI](https://github.com/lalitheswaran11-stack/market-data-quality/actions/workflows/ci.yml/badge.svg)](https://github.com/lalitheswaran11-stack/market-data-quality/actions/workflows/ci.yml)
+[![CI](https://github.com/waran-viswanathan/market-data-quality/actions/workflows/ci.yml/badge.svg)](https://github.com/waran-viswanathan/market-data-quality/actions/workflows/ci.yml)
 
 A command-line pipeline for checking daily OHLCV data before it reaches a
 research notebook or backtest. It pulls Yahoo Finance and Stooq data, stores
 the raw results as Parquet, and writes Markdown and HTML reports. Findings are
 reported for review; the pipeline never edits the source data.
 
+**See the output:** [sample report](examples/sample-report.md). Run the same
+fixture-based demo without vendor credentials or network access:
+
+```sh
+uv sync
+uv run python examples/demo.py
+```
+
+Open the generated HTML path in a browser. The demo deliberately includes a
+missing source, short history, and suspicious price moves.
+
 ## Checks
 
 | Check | Flags |
 | --- | --- |
+| `schema` | missing/non-finite OHLCV, nonpositive prices, negative volume, and inconsistent OHLC ranges |
 | `missing_days` | missing sessions, duplicate dates, and weekend or holiday rows |
 | `price_spikes` | large returns, with volume, next-day reversion, and a second source used as context |
 | `stale_prices` | repeated closes that may indicate a frozen feed |
@@ -49,6 +61,18 @@ AAPL    adjustment_consistency       0         0    24  PASS
 AAPL    cross_source                 0         1     0  WARN
 ```
 
+`PASS` means a check completed with no errors or warnings. `SKIPPED` means its
+prerequisites were absent (for example, no adjusted close or too little history).
+`UNAVAILABLE` means required evidence could not be obtained or was invalid.
+Neither skipped nor unavailable checks count as passes. Each report includes
+execution reasons, live/cache/fallback origin, actual date coverage, and the last
+cache refresh time and requested window; legacy cache ages are explicitly unknown.
+A refresh timestamp applies to its window, not every retained historical row.
+
+Date bounds are inclusive. Missing-session checks compare against the requested
+range, including missing leading and trailing sessions. Refreshing a narrow range
+preserves history outside it while keeping vendor duplicates and holes visible.
+
 Network failures fall back to cached data when possible. If neither a live
 response nor a cache is available, ingestion records an error in the report so
 the missing source remains visible.
@@ -65,8 +89,9 @@ src/market_data_quality/
 tests/fixtures/         small CSVs containing specific data defects
 ```
 
-Tests use only the checked-in fixtures:
+Tests use checked-in fixtures and deterministic synthetic edge cases:
 
 ```sh
 uv run pytest
 ```
+

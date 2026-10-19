@@ -16,6 +16,7 @@ from market_data_quality.checks.stale import check_stale_prices
 #: by the pipeline rather than by a check function).
 CHECK_ORDER = [
     "ingestion",
+    "schema",
     "missing_days",
     "price_spikes",
     "stale_prices",
@@ -31,3 +32,4 @@ __all__ = [
     "check_price_spikes",
     "check_stale_prices",
 ]
+

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Market data quality report</title>
+<style>
+body { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+       margin: 2rem auto; max-width: 60rem; padding: 0 1rem; color: #1a2233; }
+h1 { border-bottom: 2px solid #d6dbe4; padding-bottom: .4rem; }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .9rem; }
+th, td { border: 1px solid #d6dbe4; padding: .35rem .6rem; text-align: left; }
+th { background: #f2f4f8; }
+ul.meta { color: #4a5568; font-size: .9rem; padding-left: 1.2rem; }
+.badge { display: inline-block; padding: .1rem .5rem; border-radius: .6rem;
+         font-size: .78rem; font-weight: 600; }
+.badge.error, .status-FAIL { background: #fbe3e4; color: #8f1f1f; }
+.badge.warning, .status-WARN { background: #fdf0d5; color: #7a5200; }
+.badge.info { background: #e2ecf9; color: #1d4f91; }
+.status-PASS { background: #e3f4e4; color: #1d6b28; }
+.status-SKIPPED, .status-UNAVAILABLE { background: #edf0f4; color: #4a5568; }
+li.finding { margin: .35rem 0; }
+code { background: #f2f4f8; padding: .05rem .3rem; border-radius: .25rem; }
+.dates { color: #4a5568; font-size: .85rem; }
+</style></head><body>
+<h1>Market data quality report</h1>
+<ul class="meta">
+<li>Generated: 2026-10-19 11:38:03</li>
+<li>Tickers: SPKY, SOLO</li>
+<li>Date range: earliest to latest</li>
+<li>Mode: offline (cache only)</li>
+<li>Thresholds: spike sigma 4 over 21d, stale &gt; 5 sessions, reconcile tolerance 20 bps</li>
+</ul>
+<h2>Summary</h2>
+<table><thead><tr><th>ticker</th><th>check</th><th>errors</th><th>warnings</th><th>info</th><th>status</th></tr></thead><tbody><tr><td>SOLO</td><td>ingestion</td><td>1</td><td>0</td><td>0</td><td><span class="badge status-FAIL">FAIL</span></td></tr><tr><td>SOLO</td><td>schema</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-PASS">PASS</span></td></tr><tr><td>SOLO</td><td>missing_days</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-PASS">PASS</span></td></tr><tr><td>SOLO</td><td>price_spikes</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-SKIPPED">SKIPPED</span></td></tr><tr><td>SOLO</td><td>stale_prices</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-SKIPPED">SKIPPED</span></td></tr><tr><td>SOLO</td><td>adjustment_consistency</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-SKIPPED">SKIPPED</span></td></tr><tr><td>SOLO</td><td>cross_source</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-UNAVAILABLE">UNAVAILABLE</span></td></tr><tr><td>SPKY</td><td>ingestion</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-PASS">PASS</span></td></tr><tr><td>SPKY</td><td>schema</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-PASS">PASS</span></td></tr><tr><td>SPKY</td><td>missing_days</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-PASS">PASS</span></td></tr><tr><td>SPKY</td><td>price_spikes</td><td>1</td><td>0</td><td>1</td><td><span class="badge status-FAIL">FAIL</span></td></tr><tr><td>SPKY</td><td>stale_prices</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-PASS">PASS</span></td></tr><tr><td>SPKY</td><td>adjustment_consistency</td><td>0</td><td>0</td><td>0</td><td><span class="badge status-PASS">PASS</span></td></tr><tr><td>SPKY</td><td>cross_source</td><td>1</td><td>0</td><td>0</td><td><span class="badge status-FAIL">FAIL</span></td></tr></tbody></table>
+<p>PASS means the check completed without warnings or errors. SKIPPED and UNAVAILABLE are not passes.</p>
+<h2>Coverage and execution</h2><ul>
+<li>SOLO/adjustment_consistency: SKIPPED — adjusted closes unavailable, incomplete, or too short</li>
+<li>SOLO/cross_source: UNAVAILABLE — two usable sources are required</li>
+<li>SOLO/price_spikes: SKIPPED — insufficient return history for trailing volatility</li>
+<li>SOLO/stale_prices: SKIPPED — insufficient history for a stale-price run</li>
+<li>ticker=SPKY; source=yfinance; origin=cache; rows=80; actual_start=2024-01-02; actual_end=2024-04-25; cache_last_refresh=unknown (legacy cache); refreshed_window=unknown to unknown</li>
+<li>ticker=SPKY; source=stooq; origin=cache; rows=80; actual_start=2024-01-02; actual_end=2024-04-25; cache_last_refresh=unknown (legacy cache); refreshed_window=unknown to unknown</li>
+<li>ticker=SOLO; source=yfinance; origin=unavailable; detail=no cached data for SOLO/yfinance in [temporary fixture cache] — run `dq run` online first</li>
+<li>ticker=SOLO; source=stooq; origin=cache; rows=3; actual_start=2024-01-02; actual_end=2024-01-04; cache_last_refresh=unknown (legacy cache); refreshed_window=unknown to unknown</li>
+</ul>
+<h2>Findings</h2>
+<h3>SOLO</h3><ul>
+<li class="finding"><span class="badge error">ERROR</span> <code>ingestion</code> <span class="dates">-</span> — no cached data for SOLO/yfinance in [temporary fixture cache] — run `dq run` online first</li>
+</ul>
+<h3>SPKY</h3><ul>
+<li class="finding"><span class="badge error">ERROR</span> <code>cross_source</code> <span class="dates">2024-03-21</span> — closes disagree beyond 20 bps on 1 session(s) (max 1200 bps); sources genuinely disagree — at least one carries bad prices</li>
+<li class="finding"><span class="badge error">ERROR</span> <code>price_spikes</code> <span class="dates">2024-03-21</span> — +13.0% close-to-close move (|z|=4.9 vs trailing 21d) — likely bad tick; second source does not show the move</li>
+<li class="finding"><span class="badge info">INFO</span> <code>price_spikes</code> <span class="dates">2024-02-29</span> — +11.1% close-to-close move (|z|=14.3 vs trailing 21d) — likely real event; second source shows the same move</li>
+</ul>
+</body></html>

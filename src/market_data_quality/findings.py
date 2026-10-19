@@ -13,6 +13,7 @@ import datetime as dt
 from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable
+from typing import Literal
 
 import pandas as pd
 
@@ -23,6 +24,14 @@ class Severity(str, Enum):
     INFO = "info"
     WARNING = "warning"
     ERROR = "error"
+
+
+@dataclass(frozen=True, slots=True)
+class CheckExecution:
+    """Whether a check ran; absence of findings alone is not evidence of a pass."""
+
+    status: Literal["COMPLETED", "SKIPPED", "UNAVAILABLE"]
+    reason: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,3 +66,4 @@ class Finding:
 def to_dates(index: Iterable[object]) -> tuple[dt.date, ...]:
     """Convert an iterable of timestamps to a sorted tuple of dates."""
     return tuple(sorted(pd.Timestamp(value).date() for value in index))
+

@@ -21,7 +21,10 @@ from market_data_quality.trading_calendar import nyse_sessions
 CHECK = "missing_days"
 
 
-def check_missing_days(df: pd.DataFrame, ticker: str, config: Config) -> list[Finding]:
+def check_missing_days(
+    df: pd.DataFrame, ticker: str, config: Config,
+    start: str | None = None, end: str | None = None,
+) -> list[Finding]:
     """Report duplicated timestamps and gaps vs the NYSE session calendar.
 
     Args:
@@ -36,7 +39,7 @@ def check_missing_days(df: pd.DataFrame, ticker: str, config: Config) -> list[Fi
     """
     del config  # uniform signature; this check is threshold-free
     findings: list[Finding] = []
-    index = pd.DatetimeIndex(df.index)
+    index = pd.DatetimeIndex(df.index).dropna()
 
     duplicated = index[index.duplicated(keep="first")].unique()
     if len(duplicated):
@@ -54,9 +57,11 @@ def check_missing_days(df: pd.DataFrame, ticker: str, config: Config) -> list[Fi
         )
 
     unique = index.unique().sort_values()
-    if len(unique) < 2:
+    if len(unique) == 0 and (start is None or end is None):
         return findings
-    expected = nyse_sessions(unique.min(), unique.max())
+    lower = pd.Timestamp(start) if start is not None else unique.min()
+    upper = pd.Timestamp(end) if end is not None else unique.max()
+    expected = nyse_sessions(lower, upper)
 
     missing = expected.difference(unique)
     for run in consecutive_runs(missing, within=expected):
@@ -88,3 +93,4 @@ def check_missing_days(df: pd.DataFrame, ticker: str, config: Config) -> list[Fi
             )
         )
     return findings
+

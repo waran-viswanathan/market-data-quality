@@ -20,3 +20,11 @@ jobs:
 
       - name: Run tests (offline, fixture-based)
         run: uv run pytest
+
+      - name: Generate offline demonstration report
+        run: uv run python examples/demo.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sample-quality-report
+          path: reports/demo/

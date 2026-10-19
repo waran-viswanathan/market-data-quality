@@ -3,7 +3,7 @@
 import datetime as dt
 
 from market_data_quality.config import Config
-from market_data_quality.findings import Finding, Severity
+from market_data_quality.findings import CheckExecution, Finding, Severity
 from market_data_quality.report import RunMeta, render_html, summarize, write_reports
 
 FINDINGS = [
@@ -35,13 +35,14 @@ def _meta() -> RunMeta:
 
 
 def test_summarize_statuses_and_grid() -> None:
-    summary = summarize(FINDINGS, ["AAPL", "MSFT"])
+    summary = summarize(FINDINGS, ["AAPL", "MSFT"], {("AAPL", "stale_prices"): CheckExecution("COMPLETED")})
     indexed = summary.set_index(["ticker", "check"])
     assert indexed.loc[("AAPL", "price_spikes"), "status"] == "FAIL"
     assert indexed.loc[("MSFT", "cross_source"), "status"] == "WARN"
     # Clean cells still appear, as PASS with zero counts.
     assert indexed.loc[("AAPL", "stale_prices"), "status"] == "PASS"
     assert int(indexed["errors"].sum()) == 1
+    assert indexed.loc[("AAPL", "cross_source"), "status"] == "SKIPPED"
 
 
 def test_write_reports_creates_dated_directory(tmp_path) -> None:
@@ -67,3 +68,4 @@ def test_empty_run_renders_pass_only(tmp_path) -> None:
     markdown = markdown_path.read_text()
     assert "No findings" in markdown
     assert "FAIL" not in markdown
+

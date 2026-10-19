@@ -17,7 +17,9 @@ Every successful pull is cached to ``data/raw/*.parquet`` so repeated runs
 from __future__ import annotations
 
 import io
+import datetime as dt
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -28,7 +30,7 @@ STANDARD_COLUMNS = ["open", "high", "low", "close", "adj_close", "volume"]
 SOURCES = ("yfinance", "stooq")
 STOOQ_URL = "https://stooq.com/q/d/l/?s={symbol}&i=d"
 _REQUEST_TIMEOUT_SECONDS = 30
-_USER_AGENT = "market-data-quality/0.1 (+https://github.com/lalitheswaran11-stack/market-data-quality)"
+_USER_AGENT = "market-data-quality/0.1 (+https://github.com/waran-viswanathan/market-data-quality)"
 
 
 class IngestError(RuntimeError):
@@ -117,7 +119,9 @@ def fetch_yfinance(ticker: str, start: str | None, end: str | None) -> pd.DataFr
     """Download one ticker from yfinance (raw + adjusted) and merge."""
     import yfinance as yf  # local import: keeps `dq report` fully offline
 
-    common = {"start": start, "end": end, "progress": False, "actions": False}
+    # The CLI's end date is inclusive; yfinance's end boundary is exclusive.
+    exclusive_end = (pd.Timestamp(end) + pd.Timedelta(days=1)).date().isoformat() if end else None
+    common = {"start": start, "end": exclusive_end, "progress": False, "actions": False}
     raw = yf.download(ticker, auto_adjust=False, **common)
     adjusted = yf.download(ticker, auto_adjust=True, **common)
     if raw is None or raw.empty:
@@ -154,7 +158,10 @@ def load_cached(cache_dir: Path, ticker: str, source: str) -> pd.DataFrame | Non
     path = cache_path(cache_dir, ticker, source)
     if not path.exists():
         return None
-    return pd.read_parquet(path)
+    try:
+        return pd.read_parquet(path)
+    except Exception as exc:
+        raise IngestError(f"unreadable cache for {ticker}/{source}: {exc}") from exc
 
 
 def cached_tickers(cache_dir: Path) -> list[str]:
@@ -162,7 +169,47 @@ def cached_tickers(cache_dir: Path) -> list[str]:
     cache_dir = Path(cache_dir)
     if not cache_dir.exists():
         return []
-    return sorted({path.name.split(".")[0] for path in cache_dir.glob("*.parquet")})
+    return sorted({path.name.removesuffix(f".{source}.parquet") for source in SOURCES for path in cache_dir.glob(f"*.{source}.parquet")})
+
+
+def _cache_refresh(path: Path, fresh: pd.DataFrame, start: str | None, end: str | None) -> None:
+    """Replace the requested window while retaining history outside it.
+
+    Do not deduplicate vendor rows or fill holes inside the refreshed window:
+    both are evidence for the checks. Atomic replacement avoids partial files.
+    """
+    if fresh.empty and (start is None or end is None):
+        raise IngestError("empty response without a complete refresh range")
+    previous = pd.read_parquet(path) if path.exists() else None
+    combined = fresh
+    if previous is not None and not previous.empty:
+        lower = pd.Timestamp(start) if start else fresh.index.min()
+        upper = pd.Timestamp(end) if end else fresh.index.max()
+        retained = previous[(previous.index < lower) | (previous.index > upper)]
+        combined = pd.concat([retained, fresh]).sort_index()
+    combined.attrs = {"last_refresh": {"fetched_at": dt.datetime.now(dt.timezone.utc).isoformat(), "start": start, "end": end}}
+    with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".parquet", delete=False) as temp:
+        temporary = Path(temp.name)
+    try:
+        combined.to_parquet(temporary)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _with_provenance(df: pd.DataFrame, origin: str, detail: str | None = None) -> pd.DataFrame:
+    result = df.copy()
+    refresh = df.attrs.get("last_refresh", {})
+    result.attrs["provenance"] = {
+        "origin": origin,
+        "rows": len(df),
+        "actual_start": str(df.index.min().date()) if not df.empty else None,
+        "actual_end": str(df.index.max().date()) if not df.empty else None,
+        "cache_last_refresh": refresh.get("fetched_at", "unknown (legacy cache)"),
+        "refreshed_window": f"{refresh.get('start', 'unknown')} to {refresh.get('end', 'unknown')}",
+        "detail": detail,
+    }
+    return result
 
 
 def get_data(
@@ -175,7 +222,7 @@ def get_data(
 ) -> pd.DataFrame:
     """Fetch one (ticker, source) frame, refreshing or falling back to cache.
 
-    Online: fetch, overwrite the cache, return the fresh frame; on network
+    Online: fetch, refresh only that cache window, return the fresh frame; on network
     failure, fall back to the cache with a warning.  Offline: cache only.
 
     Args:
@@ -196,6 +243,7 @@ def get_data(
     if source not in SOURCES:
         raise ValueError(f"unknown source {source!r}; expected one of {SOURCES}")
     cache_dir = Path(cache_dir)
+    fallback_detail = None
     if not offline:
         try:
             df = (
@@ -204,8 +252,10 @@ def get_data(
                 else fetch_stooq(ticker, start, end)
             )
             cache_dir.mkdir(parents=True, exist_ok=True)
-            df.to_parquet(cache_path(cache_dir, ticker, source))
-            return df
+            path = cache_path(cache_dir, ticker, source)
+            _cache_refresh(path, df, start, end)
+            df.attrs["last_refresh"] = {"fetched_at": dt.datetime.now(dt.timezone.utc).isoformat(), "start": start, "end": end}
+            return _with_provenance(df, "live")
         except Exception as exc:  # noqa: BLE001 — degrade to cache on any fetch failure
             if load_cached(cache_dir, ticker, source) is None:
                 raise IngestError(f"{source} fetch failed for {ticker}: {exc}") from exc
@@ -213,9 +263,11 @@ def get_data(
                 f"warning: {source} fetch failed for {ticker} ({exc}); using cached data",
                 file=sys.stderr,
             )
+            fallback_detail = str(exc)
     cached = load_cached(cache_dir, ticker, source)
     if cached is None:
         raise IngestError(
             f"no cached data for {ticker}/{source} in {cache_dir} — run `dq run` online first"
         )
-    return _slice(cached, start, end)
+    return _with_provenance(_slice(cached, start, end), "cache" if offline else "cache_fallback", fallback_detail)
+
